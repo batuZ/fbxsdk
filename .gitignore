@@ -1,0 +1,21 @@
+.vscode
+3rdLib/*
+
+
+
+# cpp
+*.log
+*.pyc
+*.user
+*.opendb
+*.vrt
+*.db
+*.obj
+x64/* 
+.vs/*
+**/.vs/*
+**/x64/*
+**/debug/*
+**/release/*
+**/CMakeFiles/*
+**/build/*

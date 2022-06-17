@@ -1,5 +1,6 @@
 from FbxCommon import *
 import cv2
+import numpy as np
 
 lSdkManager = None
 lScene = None
@@ -13,7 +14,7 @@ def BFindBigTextureIds() -> [int]:
     for i in range(lScene.GetTextureCount()):
         tex = lScene.GetTexture(i)
         fileName = tex.GetFileName()
-        width, height, channelCount = cv2.imread(fileName).shape
+        height, width = cv2Reader(fileName, cv2.IMREAD_GRAYSCALE).shape
         if width > MAX_SIZE or height > MAX_SIZE:
             ids.append(i)
     return ids
@@ -71,12 +72,6 @@ def BGetPolygonGroupCount(iMesh) -> int:
         printInLine('>> check polygon group:', groupId, ' checkPoly:',
                     len(checked), "/", polyCount)
     return groupId
-
-
-def printInLine(*msg) -> None:
-    if output_log:
-        print('\b'*1000, end='')
-        print(*msg, ' '*20, end='')
 
 
 def BGetPolyPointIds(iMesh, lStartIndex, pSize) -> [int]:
@@ -160,6 +155,44 @@ def BGetImagePolygon(iMesh, imgX, imgY, points=[]) -> [[float, float], [float, f
             y = (1-tUVs[p][1]) * imgY
             res.append([x, y])
     return res
+
+
+def readImage(filePath):
+    # tt = cv2.imread(filePath)C:\Users\30470\Pictures
+    tt = cv2Reader('C:\\Users\\30470\\Pictures\\微信图片_20220425105356.jpg')
+    # cv2.imshow('IMREAD_UNCHANGED+Color', tt)
+    # cv2.waitKey()
+    imgZero = np.zeros((100, 200, 3), np.uint8)
+    showImage(imgZero)
+    pass
+
+
+def writeImage(outPath):
+    newImg = np.zeros((100, 200, 3), np.uint8)
+    cv2.imwrite(outPath, newImg)
+
+
+def showImage(img):
+    cv2.imshow('image', img)
+    cv2.waitKey()
+
+
+def cv2Reader(paht, flag=None):
+    '''解决中文路径问题'''
+    # cv2.IMREAD_COLOR：指定加载彩色图像。 图像的任何透明度都将被忽略。 它是默认标志。 或者，我们可以为此标志传递整数值 1。
+    # cv2.IMREAD_GRAYSCALE：指定以灰度模式加载图像。 或者，我们可以为此标志传递整数值 0。
+    # cv2.IMREAD_UNCHANGED：它指定加载图像，包括 alpha 通道。 或者，我们可以为此标志传递整数值 -1。
+    res = cv2.imread(paht, flag)
+    if res is None:
+        res = cv2.imdecode(paht, flag)
+    return res
+
+
+def printInLine(*msg) -> None:
+    '''单行输出'''
+    if output_log:
+        print('\b'*1000, end='')
+        print(*msg, ' '*20, end='')
 
 
 if __name__ == "__main__":

@@ -143,6 +143,7 @@ def BGetOutlineWithGroup(iMesh, groupId=-1):
 
         # progress report
         printInLine('>> check group outline', groupId, ': edge', len(edges))
+    pass
     return points
 
 
@@ -168,7 +169,7 @@ if __name__ == "__main__":
 
     lSdkManager, lScene = InitializeSdkObjects()
 
-    if not(LoadScene(lSdkManager, lScene, 'D:\\datas\\SINGLE_MODEL_ID.FBX')):
+    if not(LoadScene(lSdkManager, lScene, 'D:\\test1.FBX')):
         print('load scene faild!!')
 
     # The coordinate system's original Up Axis when the scene is created. 0 is X, 1 is Y, 2 is Z axis.
@@ -188,6 +189,14 @@ if __name__ == "__main__":
         groupCount = BGetPolygonGroupCount(iMesh)
         for g in range(groupCount):
             pointIds = BGetOutlineWithGroup(iMesh, g)
+
+    # 4、通过UV获得贴图坐标的多边形数组
+
+    # 5、创建512空画布，填充uv多边形，填满则创建新多边形
+
+    # 6、创建materail，引用512贴图，设置mesh材质id
+
+    # 7、清除未引用materail，导出新fbx
 
     lSdkManager.Destroy()
     sys.exit(0)

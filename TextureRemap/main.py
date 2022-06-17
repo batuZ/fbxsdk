@@ -1,3 +1,4 @@
+from FbxCommon import *
 import cv2
 
 lSdkManager = None
@@ -6,7 +7,7 @@ MAX_SIZE = 0
 output_log = True
 
 
-def BFindBigTextureIds():
+def BFindBigTextureIds() -> [int]:
     '''在场景中找到过大贴图,返回Textue索引'''
     ids = []
     for i in range(lScene.GetTextureCount()):
@@ -18,20 +19,20 @@ def BFindBigTextureIds():
     return ids
 
 
-def BCheckMeshWithTextures(tIds):
+def BCheckMeshWithTextures(tIds) -> [FbxMesh]:
     '''通过纹理查找到Mesh'''
     meshes = []
-    for i in range(len(tIds)):
-        tex = lScene.GetTexture(tIds[i])
-        layer = tex.GetDstProperty()
-        materail = layer.GetParent()
+    for i in tIds:
+        tex = lScene.GetTexture(i)
+        DiffuseLayer = tex.GetDstProperty()
+        materail = DiffuseLayer.GetParent()
         iNode = materail.GetDstObject(1)
         iMesh = iNode.GetMesh()
         meshes.append(iMesh)
     return meshes
 
 
-def BGetPolygonGroupCount(iMesh):
+def BGetPolygonGroupCount(iMesh) -> int:
     '''创建polygonGroup并返回分组数'''
     # 记录一下已经被用过polyID
     checked = []
@@ -72,13 +73,13 @@ def BGetPolygonGroupCount(iMesh):
     return groupId
 
 
-def printInLine(*msg):
+def printInLine(*msg) -> None:
     if output_log:
         print('\b'*1000, end='')
         print(*msg, ' '*20, end='')
 
 
-def BGetPolyPointIds(iMesh, lStartIndex, pSize):
+def BGetPolyPointIds(iMesh, lStartIndex, pSize) -> [int]:
     '''获取指定多边型的顶点索引'''
     res = []
     for j in range(pSize):
@@ -87,7 +88,7 @@ def BGetPolyPointIds(iMesh, lStartIndex, pSize):
     return res
 
 
-def BGetPolygonsWithGroup(iMesh, gIndex):
+def BGetPolygonsWithGroup(iMesh, gIndex) -> [int]:
     '''获取指定组中的polygon'''
     grps = []
     for i in range(iMesh.GetPolygonCount()):
@@ -96,7 +97,7 @@ def BGetPolygonsWithGroup(iMesh, gIndex):
     return grps
 
 
-def BGetOutlineWithGroup(iMesh, groupId=-1):
+def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
     '''找出mesh(polygonGroup)的外轮廓线'''
     edges = []
     polygons = range(iMesh.GetPolygonCount())
@@ -143,30 +144,25 @@ def BGetOutlineWithGroup(iMesh, groupId=-1):
 
         # progress report
         printInLine('>> check group outline', groupId, ': edge', len(edges))
-    pass
     return points
 
 
-# def for_test(iMesh):
-    #     polyCount = iMesh.GetPolygonCount()
-    #     for i in range(polyCount):
-    #         lStartIndex = iMesh.GetPolygonVertexIndex(i)
-    #         pSize = iMesh.GetPolygonSize(i)
-    #         polyPoints = []
-    #         for j in range(lStartIndex, lStartIndex + pSize):
-    #             iVerIndex = iMesh.GetPolygonVertices()[j]
-    #             polyPoints.append(iVerIndex)
-    #             a, b, c, d = iMesh.GetControlPointAt(iVerIndex)
-    #             pass
+def BGetImagePolygon(iMesh, imgX, imgY, points=[]) -> [[float, float], [float, float], ...]:
+    '''模型轮廓线转纹理图像坐标轮廓线'''
+    res = []
+    # 获取纹理UV集合
+    done, tUVs = iMesh.GetTextureUV()
+    if(done):
+        for p in points:
+            # 图像横轴坐标比*图像宽
+            x = tUVs[p][0] * imgX
+            # 图像纵轴坐标比*图像高，图像坐标向下为Y增，需要处理一下
+            y = (1-tUVs[p][1]) * imgY
+            res.append([x, y])
+    return res
 
 
 if __name__ == "__main__":
-    try:
-        from FbxCommon import *
-        from fbx import *
-    except ImportError:
-        sys.exit(1)
-
     lSdkManager, lScene = InitializeSdkObjects()
 
     if not(LoadScene(lSdkManager, lScene, 'D:\\test1.FBX')):
@@ -189,8 +185,8 @@ if __name__ == "__main__":
         groupCount = BGetPolygonGroupCount(iMesh)
         for g in range(groupCount):
             pointIds = BGetOutlineWithGroup(iMesh, g)
-
-    # 4、通过UV获得贴图坐标的多边形数组
+            # 4、通过UV获得贴图坐标的多边形数组
+            BGetImagePolygon(iMesh, 512, 512, pointIds)
 
     # 5、创建512空画布，填充uv多边形，填满则创建新多边形
 

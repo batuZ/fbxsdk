@@ -1,6 +1,7 @@
 from FbxCommon import *
 import cv2
 import numpy as np
+import math
 
 lSdkManager = None
 lScene = None
@@ -84,7 +85,7 @@ def BGetPolyPointIds(iMesh, lStartIndex, pSize) -> [int]:
 
 
 def BGetPolygonsWithGroup(iMesh, gIndex) -> [int]:
-    '''获取指定组中的polygon'''
+    '''获取指定polygon组中的面'''
     grps = []
     for i in range(iMesh.GetPolygonCount()):
         if(iMesh.GetPolygonGroup(i) == gIndex):
@@ -106,10 +107,11 @@ def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
         for j in range(iMesh.GetPolygonSize(i)):
             ed = iMesh.GetMeshEdgeIndexForPolygon(i, j)
             if(ed in edges):
-                # 判断集合中是否已存在，如果存在，说明此边为内部边线
+                #### 判断集合中是否已存在，如果存在，说明此边为内部边线 ###
                 # 把存在的remove掉，当前这个也不再塞入
                 edges.remove(ed)
             else:
+                ### 剩下的就是轮廓线的一部份 ###
                 edges.append(ed)
         # progress report
         printInLine('>> check group outline', groupId, ': edge', len(edges))
@@ -121,11 +123,13 @@ def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
         # 同时把这个边成员从边集合中移除
         points += iMesh.GetMeshEdgeVertices(edges.pop(0))
 
+    # region
     # 如果边线集合中所有的成员都被移除，则停止。
     # 此时闭合轮廓线最后一个顶点id应与第一个顶点id相同，如果不相同，则轮廓线不闭合。
     # 如果edges集合中还有成员，但最后一个顶点id已经与第一个顶点id相同，则停止。
     # 此时轮廓线提前闭合，只返回第一个轮廓线。
     # 说明1、模型中有相邻的面但法线相反，2、输入了一个以上的polygonGroup
+    # endregion
     while(len(edges) and points[0] != points[-1]):
         # 从剩余的边成员中找出一个edge,与顶点集合最后一个元素比较
         for i in edges:
@@ -145,14 +149,11 @@ def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
 def BGetImagePolygon(iMesh, imgX, imgY, points=[]) -> [[float, float], [float, float], ...]:
     '''模型轮廓线转纹理图像坐标轮廓线'''
     res = []
-    # 获取纹理UV集合
     done, tUVs = iMesh.GetTextureUV()
     if(done):
         for p in points:
-            # 图像横轴坐标比*图像宽
             x = tUVs[p][0] * imgX
-            # 图像纵轴坐标比*图像高，图像坐标向下为Y增，需要处理一下
-            y = (1-tUVs[p][1]) * imgY
+            y = (tUVs[p][1]) * imgY
             res.append([x, y])
     return res
 
@@ -179,9 +180,11 @@ def showImage(img):
 
 def cv2Reader(paht, flag=None):
     '''解决中文路径问题'''
+    # region flag
     # cv2.IMREAD_COLOR：指定加载彩色图像。 图像的任何透明度都将被忽略。 它是默认标志。 或者，我们可以为此标志传递整数值 1。
     # cv2.IMREAD_GRAYSCALE：指定以灰度模式加载图像。 或者，我们可以为此标志传递整数值 0。
     # cv2.IMREAD_UNCHANGED：它指定加载图像，包括 alpha 通道。 或者，我们可以为此标志传递整数值 -1。
+    # endregion
     res = cv2.imread(paht, flag)
     if res is None:
         res = cv2.imdecode(paht, flag)
@@ -195,7 +198,101 @@ def printInLine(*msg) -> None:
         print(*msg, ' '*20, end='')
 
 
+def is_equal(p1, p2):
+    '''判断两点是否重合'''
+    count1 = len(p1)
+    count2 = len(p2)
+    # 判断维度
+    if count1 != count2:
+        return False
+    # 判断值
+    sum = 0
+    for i in range(count1):
+        sum += abs(p1[i] - p2[1])
+    return sum < 1e-4
+
+
+def getIntersection(p1, p2, p3, p4) -> (float, float):
+    '''两直线求交点'''
+    if abs(p1[0] - p2[0]) > 1e-3:
+        X1, Y1 = p1
+        X2, Y2 = p2
+        X3, Y3 = p3
+        X4, Y4 = p4
+    elif abs(p3[0] - p4[0]) > 1e-3:
+        X1, Y1 = p3
+        X2, Y2 = p4
+        X3, Y3 = p1
+        X4, Y4 = p2
+    else:
+        # 必须有一条线不是垂直的
+        return None
+
+    # line1
+    A1 = Y2 - Y1
+    B1 = X1 - X2
+    C1 = X2 * Y1 - X1 * Y2
+
+    # line2
+    A2 = Y4 - Y3
+    B2 = X3 - X4
+    C2 = X4 * Y3 - X3 * Y4
+
+    # TODO 判断是否为平行线
+
+    X = (B2 * (C1 / B1) - C2) / (A2 - B2 * (A1 / B1))
+    Y = -X * A1 / B1 - C1 / B1
+    return (X, Y)
+
+
+def getOffset(start_point, end_point, distance):
+    '''获取edge在指定距离上的平行线, 平行线方向由edge的方向决定'''
+    p1x = start_point[0]
+    p1y = start_point[1]
+    p2x = end_point[0]
+    p2y = end_point[1]
+    u = math.atan2(abs(p1x-p2x), abs(p1y-p2y))*180/math.pi
+    x_direction = -1 if p1y > p2y else 1
+    y_direction = -1 if p1x < p2x else 1
+    x_offset = distance * math.cos(u * math.pi / 180) * x_direction
+    y_offset = distance * math.sin(u * math.pi / 180) * y_direction
+    return (x_offset, y_offset)
+
+
+def createBuffer(polygon, distance):
+    '''创建闭合多边形Buffer'''
+    bufPolygon = []
+    # region 因为是轮廓线，暂时不考虑不闭合逻辑
+    # 如果线不闭合，先把第一个点塞进去，不需要求交
+    # isRingPolygon = is_equal(polygon[0], polygon[-1])
+    # if not isRingPolygon:
+    #     x_offset, y_offset = getBufOffset(polygon[0], polygon[1], distance)
+    #     newPolygon.append([polygon[0][0] + x_offset, polygon[0][1] + y_offset])
+    # endregion
+    edgeCount = len(polygon)-1
+    for i in range(edgeCount):
+        # 循环索引
+        i_p1 = i
+        i_p2 = (i+1) % edgeCount
+        i_p3 = (i+2) % edgeCount
+        l1s = polygon[i_p1]  # line1start
+        l1e = polygon[i_p2]  # line1end
+        l2s = polygon[i_p2]  # line2start
+        l2e = polygon[i_p3]  # line2end
+        offset_x1, offset_y1 = getOffset(l1s, l1e, distance)
+        offset_x2, offset_y2 = getOffset(l2s, l2e, distance)
+        p1 = [l1s[0] + offset_x1, l1s[1] + offset_y1]
+        p2 = [l1e[0] + offset_x1, l1e[1] + offset_y1]
+        p3 = [l2s[0] + offset_x2, l2s[1] + offset_y2]
+        p4 = [l2e[0] + offset_x2, l2e[1] + offset_y2]
+        x, y = getIntersection(p1, p2, p3, p4)
+        bufPolygon.append([x, y])
+    # 一定闭合的前提下，把最后一个点的副本放在数组前，完成buffer的闭合
+    return [bufPolygon[-1]] + bufPolygon
+
+
 if __name__ == "__main__":
+
     lSdkManager, lScene = InitializeSdkObjects()
 
     if not(LoadScene(lSdkManager, lScene, 'D:\\test1.FBX')):
@@ -219,8 +316,8 @@ if __name__ == "__main__":
         for g in range(groupCount):
             pointIds = BGetOutlineWithGroup(iMesh, g)
             # 4、通过UV获得贴图坐标的多边形数组
-            BGetImagePolygon(iMesh, 512, 512, pointIds)
-
+            imgPoints = BGetImagePolygon(iMesh, 512, 512, pointIds)
+            bufPoints = createBuffer(imgPoints, 20)
     # 5、创建512空画布，填充uv多边形，填满则创建新多边形
 
     # 6、创建materail，引用512贴图，设置mesh材质id

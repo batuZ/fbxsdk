@@ -2,10 +2,12 @@ from FbxCommon import *
 import cv2
 import numpy as np
 import math
+import os
 
 lSdkManager = None
 lScene = None
 MAX_SIZE = 0
+TAG_SIZE = 512
 output_log = True
 
 
@@ -158,6 +160,25 @@ def BGetImagePolygon(iMesh, imgX, imgY, points=[]) -> [[float, float], [float, f
     return res
 
 
+def UV2IMG(points):
+    res = []
+    for i in points:
+        x = round(i[0], 0)
+        y = round(2048-i[1], 0)
+        res.append([x, y])
+    return res
+
+
+def test(points):
+    img = cv2Reader('D:\\datas\\SINGLE_MODEL_ID.fbm\\SB0661.jpg')
+    imgPoints = UV2IMG(points)
+    cv2.polylines(img, [np.array(imgPoints, np.int32)],
+                  False, (0, 255, 255), 2)
+    cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+    cv2.imshow('pic', img)
+    cv2.waitKey(0)
+
+
 def readImage(filePath):
     # tt = cv2.imread(filePath)C:\Users\30470\Pictures
     tt = cv2Reader('C:\\Users\\30470\\Pictures\\微信图片_20220425105356.jpg')
@@ -178,17 +199,18 @@ def showImage(img):
     cv2.waitKey()
 
 
-def cv2Reader(paht, flag=None):
+def cv2Reader(path, flag=None):
     '''解决中文路径问题'''
     # region flag
     # cv2.IMREAD_COLOR：指定加载彩色图像。 图像的任何透明度都将被忽略。 它是默认标志。 或者，我们可以为此标志传递整数值 1。
     # cv2.IMREAD_GRAYSCALE：指定以灰度模式加载图像。 或者，我们可以为此标志传递整数值 0。
     # cv2.IMREAD_UNCHANGED：它指定加载图像，包括 alpha 通道。 或者，我们可以为此标志传递整数值 -1。
     # endregion
-    res = cv2.imread(paht, flag)
-    if res is None:
-        res = cv2.imdecode(paht, flag)
-    return res
+    if os.path.exists(path):
+        res = cv2.imread(path, flag)
+        if res is None:
+            res = cv2.imdecode(np.fromfile(path), flag)
+        return res
 
 
 def printInLine(*msg) -> None:
@@ -240,7 +262,7 @@ def getIntersection(p1, p2, p3, p4) -> (float, float):
 
     # TODO 判断是否为平行线
 
-    X = (B2 * (C1 / B1) - C2) / (A2 - B2 * (A1 / B1))
+    X = (B2 * (C1 / B1) - C2) / (A2 - B2 * (A1 / B1)+1e-3)
     Y = -X * A1 / B1 - C1 / B1
     return (X, Y)
 
@@ -257,6 +279,9 @@ def getOffset(start_point, end_point, distance):
     x_offset = distance * math.cos(u * math.pi / 180) * x_direction
     y_offset = distance * math.sin(u * math.pi / 180) * y_direction
     return (x_offset, y_offset)
+
+# TODO 需要重写buffer算法
+# 参考 https://blog.csdn.net/qq_41655524/article/details/105384777
 
 
 def createBuffer(polygon, distance):
@@ -291,11 +316,31 @@ def createBuffer(polygon, distance):
     return [bufPolygon[-1]] + bufPolygon
 
 
+def getBoundingBox(polygong):
+    '''获取polygon包围盒'''
+    minx = miny = float('inf')
+    maxx = maxy = float('-inf')
+    for poi in polygong:
+        minx = poi[0] if poi[0] < minx else minx
+        maxx = poi[0] if poi[0] > maxx else maxx
+        miny = poi[1] if poi[1] < miny else miny
+        maxy = poi[1] if poi[1] > maxy else maxy
+    return minx, maxx, miny, maxy
+
+
+def SortPolygonsBySize(iMesh):
+    pass
+
+
+def SortPolygonsByArea(iMesh):
+    pass
+
+
 if __name__ == "__main__":
 
     lSdkManager, lScene = InitializeSdkObjects()
 
-    if not(LoadScene(lSdkManager, lScene, 'D:\\test1.FBX')):
+    if not(LoadScene(lSdkManager, lScene, 'D:\\test.FBX')):
         print('load scene faild!!')
 
     # The coordinate system's original Up Axis when the scene is created. 0 is X, 1 is Y, 2 is Z axis.
@@ -316,10 +361,10 @@ if __name__ == "__main__":
         for g in range(groupCount):
             pointIds = BGetOutlineWithGroup(iMesh, g)
             # 4、通过UV获得贴图坐标的多边形数组
-            imgPoints = BGetImagePolygon(iMesh, 512, 512, pointIds)
-            bufPoints = createBuffer(imgPoints, 20)
-    # 5、创建512空画布，填充uv多边形，填满则创建新多边形
-
+            imgPoints = BGetImagePolygon(iMesh, 2048, 2048, pointIds)
+            bufPoints = createBuffer(imgPoints, 8)
+            # 5、创建512空画布，填充uv多边形，填满则创建新多边形
+            test(bufPoints)
     # 6、创建materail，引用512贴图，设置mesh材质id
 
     # 7、清除未引用materail，导出新fbx

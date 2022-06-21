@@ -3,37 +3,13 @@ import cv2
 import numpy as np
 import math
 import os
+import pyclipper  # CNdoc:https://www.cnblogs.com/zhigu/p/11943118.html
 
 lSdkManager = None
 lScene = None
 MAX_SIZE = 0
 TAG_SIZE = 512
 output_log = True
-
-
-def BFindBigTextureIds() -> [int]:
-    '''在场景中找到过大贴图,返回Textue索引'''
-    ids = []
-    for i in range(lScene.GetTextureCount()):
-        tex = lScene.GetTexture(i)
-        fileName = tex.GetFileName()
-        height, width = cv2Reader(fileName, cv2.IMREAD_GRAYSCALE).shape
-        if width > MAX_SIZE or height > MAX_SIZE:
-            ids.append(i)
-    return ids
-
-
-def BCheckMeshWithTextures(tIds) -> [FbxMesh]:
-    '''通过纹理查找到Mesh'''
-    meshes = []
-    for i in tIds:
-        tex = lScene.GetTexture(i)
-        DiffuseLayer = tex.GetDstProperty()
-        materail = DiffuseLayer.GetParent()
-        iNode = materail.GetDstObject(1)
-        iMesh = iNode.GetMesh()
-        meshes.append(iMesh)
-    return meshes
 
 
 def BGetPolygonGroupCount(iMesh) -> int:
@@ -148,6 +124,18 @@ def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
     return points
 
 
+def ID2UV(iMesh, imgX, imgY, points):
+    '''模型轮廓线转纹理图像坐标轮廓线'''
+    res = []
+    done, tUVs = iMesh.GetTextureUV()
+    if(done):
+        for p in points:
+            x = tUVs[p][0] * imgX
+            y = (tUVs[p][1]) * imgY
+            res.append([x, y])
+    return res
+
+
 def BGetImagePolygon(iMesh, imgX, imgY, points=[]) -> [[float, float], [float, float], ...]:
     '''模型轮廓线转纹理图像坐标轮廓线'''
     res = []
@@ -160,43 +148,18 @@ def BGetImagePolygon(iMesh, imgX, imgY, points=[]) -> [[float, float], [float, f
     return res
 
 
-def UV2IMG(points):
+def UV2IMG(height, points):
+    '''uv坐标转图像坐标, 图像坐标向下为Y增'''
     res = []
     for i in points:
-        x = round(i[0], 0)
-        y = round(2048-i[1], 0)
-        res.append([x, y])
+        res.append([i[0], height-i[1]])
     return res
 
 
-def test(points):
-    img = cv2Reader('D:\\datas\\SINGLE_MODEL_ID.fbm\\SB0661.jpg')
-    imgPoints = UV2IMG(points)
-    cv2.polylines(img, [np.array(imgPoints, np.int32)],
-                  False, (0, 255, 255), 2)
+def showImage(img, points):
+    cv2.polylines(img, np.array(points, np.int32), True, (0, 255, 255), 2)
     cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
     cv2.imshow('pic', img)
-    cv2.waitKey(0)
-
-
-def readImage(filePath):
-    # tt = cv2.imread(filePath)C:\Users\30470\Pictures
-    tt = cv2Reader('C:\\Users\\30470\\Pictures\\微信图片_20220425105356.jpg')
-    # cv2.imshow('IMREAD_UNCHANGED+Color', tt)
-    # cv2.waitKey()
-    imgZero = np.zeros((100, 200, 3), np.uint8)
-    showImage(imgZero)
-    pass
-
-
-def writeImage(outPath):
-    newImg = np.zeros((100, 200, 3), np.uint8)
-    cv2.imwrite(outPath, newImg)
-
-
-def showImage(img):
-    cv2.imshow('image', img)
-    cv2.waitKey()
 
 
 def cv2Reader(path, flag=None):
@@ -220,102 +183,6 @@ def printInLine(*msg) -> None:
         print(*msg, ' '*20, end='')
 
 
-def is_equal(p1, p2):
-    '''判断两点是否重合'''
-    count1 = len(p1)
-    count2 = len(p2)
-    # 判断维度
-    if count1 != count2:
-        return False
-    # 判断值
-    sum = 0
-    for i in range(count1):
-        sum += abs(p1[i] - p2[1])
-    return sum < 1e-4
-
-
-def getIntersection(p1, p2, p3, p4) -> (float, float):
-    '''两直线求交点'''
-    if abs(p1[0] - p2[0]) > 1e-3:
-        X1, Y1 = p1
-        X2, Y2 = p2
-        X3, Y3 = p3
-        X4, Y4 = p4
-    elif abs(p3[0] - p4[0]) > 1e-3:
-        X1, Y1 = p3
-        X2, Y2 = p4
-        X3, Y3 = p1
-        X4, Y4 = p2
-    else:
-        # 必须有一条线不是垂直的
-        return None
-
-    # line1
-    A1 = Y2 - Y1
-    B1 = X1 - X2
-    C1 = X2 * Y1 - X1 * Y2
-
-    # line2
-    A2 = Y4 - Y3
-    B2 = X3 - X4
-    C2 = X4 * Y3 - X3 * Y4
-
-    # TODO 判断是否为平行线
-
-    X = (B2 * (C1 / B1) - C2) / (A2 - B2 * (A1 / B1)+1e-3)
-    Y = -X * A1 / B1 - C1 / B1
-    return (X, Y)
-
-
-def getOffset(start_point, end_point, distance):
-    '''获取edge在指定距离上的平行线, 平行线方向由edge的方向决定'''
-    p1x = start_point[0]
-    p1y = start_point[1]
-    p2x = end_point[0]
-    p2y = end_point[1]
-    u = math.atan2(abs(p1x-p2x), abs(p1y-p2y))*180/math.pi
-    x_direction = -1 if p1y > p2y else 1
-    y_direction = -1 if p1x < p2x else 1
-    x_offset = distance * math.cos(u * math.pi / 180) * x_direction
-    y_offset = distance * math.sin(u * math.pi / 180) * y_direction
-    return (x_offset, y_offset)
-
-# TODO 需要重写buffer算法
-# 参考 https://blog.csdn.net/qq_41655524/article/details/105384777
-
-
-def createBuffer(polygon, distance):
-    '''创建闭合多边形Buffer'''
-    bufPolygon = []
-    # region 因为是轮廓线，暂时不考虑不闭合逻辑
-    # 如果线不闭合，先把第一个点塞进去，不需要求交
-    # isRingPolygon = is_equal(polygon[0], polygon[-1])
-    # if not isRingPolygon:
-    #     x_offset, y_offset = getBufOffset(polygon[0], polygon[1], distance)
-    #     newPolygon.append([polygon[0][0] + x_offset, polygon[0][1] + y_offset])
-    # endregion
-    edgeCount = len(polygon)-1
-    for i in range(edgeCount):
-        # 循环索引
-        i_p1 = i
-        i_p2 = (i+1) % edgeCount
-        i_p3 = (i+2) % edgeCount
-        l1s = polygon[i_p1]  # line1start
-        l1e = polygon[i_p2]  # line1end
-        l2s = polygon[i_p2]  # line2start
-        l2e = polygon[i_p3]  # line2end
-        offset_x1, offset_y1 = getOffset(l1s, l1e, distance)
-        offset_x2, offset_y2 = getOffset(l2s, l2e, distance)
-        p1 = [l1s[0] + offset_x1, l1s[1] + offset_y1]
-        p2 = [l1e[0] + offset_x1, l1e[1] + offset_y1]
-        p3 = [l2s[0] + offset_x2, l2s[1] + offset_y2]
-        p4 = [l2e[0] + offset_x2, l2e[1] + offset_y2]
-        x, y = getIntersection(p1, p2, p3, p4)
-        bufPolygon.append([x, y])
-    # 一定闭合的前提下，把最后一个点的副本放在数组前，完成buffer的闭合
-    return [bufPolygon[-1]] + bufPolygon
-
-
 def getBoundingBox(polygong):
     '''获取polygon包围盒'''
     minx = miny = float('inf')
@@ -328,12 +195,17 @@ def getBoundingBox(polygong):
     return minx, maxx, miny, maxy
 
 
-def SortPolygonsBySize(iMesh):
-    pass
-
-
-def SortPolygonsByArea(iMesh):
-    pass
+def equidistant_zoom_contour(contour, margin):
+    """
+    等距离缩放多边形轮廓点
+    :param contour: 一个图形的轮廓格式[[x1, x2],...],shape是(n, 2)
+    :param margin: 轮廓外扩的像素距离,margin正数是外扩,负数是缩小
+    :return: 外扩后的轮廓点
+    """
+    pco = pyclipper.PyclipperOffset()
+    pco.AddPath(contour, pyclipper.JT_MITER, pyclipper.ET_CLOSEDPOLYGON)
+    solution = pco.Execute(margin)
+    return solution
 
 
 if __name__ == "__main__":
@@ -348,26 +220,32 @@ if __name__ == "__main__":
     print('upAxis:', upAxis)
 
     # 1、找到所有超尺寸贴图
-    targetTextures = BFindBigTextureIds()
+    for i in range(lScene.GetTextureCount()):
+        tex = lScene.GetTexture(i)
+        fileName = tex.GetFileName()
+        img = cv2Reader(fileName)
+        height, width, channel = img.shape
+        if width > MAX_SIZE or height > MAX_SIZE:
+            # 2、处理使用大贴图的模型
+            DiffuseLayer = tex.GetDstProperty()
+            materail = DiffuseLayer.GetParent()
+            iNode = materail.GetDstObject(1)
+            iMesh = iNode.GetMesh()
+            # 3、找出每个mesh的多边形组
+            groupCount = BGetPolygonGroupCount(iMesh)
+            for g in range(groupCount):
+                idPoints = BGetOutlineWithGroup(iMesh, g)
+                uvPoints = ID2UV(iMesh, width, height, idPoints)
+                imgPoints = UV2IMG(height, uvPoints)
+                # showImage(img, [imgPoints])# unbuffer
+                buffer = equidistant_zoom_contour(imgPoints, 6)
+                showImage(img, buffer)
 
-    # 2、处理使用大贴图的模型
-    meshes = BCheckMeshWithTextures(targetTextures)
+    # 5、创建512空画布，填充uv多边形，填满则创建新多边形
 
-    # 3、找出每个mesh的多边形组
-    for iMesh in meshes:
-        print('\n----- Mesh: %s / %s -----' %
-              (meshes.index(iMesh)+1, len(meshes)))
-        groupCount = BGetPolygonGroupCount(iMesh)
-        for g in range(groupCount):
-            pointIds = BGetOutlineWithGroup(iMesh, g)
-            # 4、通过UV获得贴图坐标的多边形数组
-            imgPoints = BGetImagePolygon(iMesh, 2048, 2048, pointIds)
-            bufPoints = createBuffer(imgPoints, 8)
-            # 5、创建512空画布，填充uv多边形，填满则创建新多边形
-            test(bufPoints)
     # 6、创建materail，引用512贴图，设置mesh材质id
 
     # 7、清除未引用materail，导出新fbx
-
+    cv2.waitKey(0)
     lSdkManager.Destroy()
     sys.exit(0)

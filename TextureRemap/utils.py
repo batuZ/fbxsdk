@@ -42,3 +42,24 @@ def UV2IMG(height, points):
     for i in points:
         res.append([i[0], height-i[1]])
     return res
+
+
+def polygongArea(poly):
+    '''多边形面积，(n,2)不闭合顶点集
+    np.array([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]])
+    '''
+    x = poly[:, 0]
+    y = poly[:, 1]
+    return 0.5*np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+
+def getBoundingBox(polygong):
+    '''获取polygon包围盒'''
+    minx = miny = float('inf')
+    maxx = maxy = float('-inf')
+    for poi in polygong:
+        minx = poi[0] if poi[0] < minx else minx
+        maxx = poi[0] if poi[0] > maxx else maxx
+        miny = poi[1] if poi[1] < miny else miny
+        maxy = poi[1] if poi[1] > maxy else maxy
+    return minx, maxx, miny, maxy

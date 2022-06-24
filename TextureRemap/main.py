@@ -17,6 +17,15 @@ MAX_SIZE = 0
 TAG_SIZE = 512
 
 
+def test():
+    image = np.zeros([400, 400, 3], np.uint8)  # 初始图片黑色
+
+
+def checkValues(buffer):
+    minx, maxx, miny, maxy = getBoundingBox(buffer[0])
+    return maxx - minx, maxy - miny
+
+
 def showImage(img, points):
     cv2.polylines(img, np.array(points, np.int32), True, (0, 255, 255), 2)
     cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
@@ -36,61 +45,11 @@ def buffer_contour(contour, margin):
     return solution
 
 
-def ParseMeshUV(iMesh):
-    '''解析MeshUV, 得到UVPolygons,UVEdges'''
-    layerUV = iMesh.GetElementUV()
-    # uv坐标集
-    vuPoint = layerUV.GetDirectArray()
-    # uv索引集
-    uvIndex = layerUV.GetIndexArray()
-    # 多边形数，uv与mesh的多边形一定是一一对应的
-    polygonCount = iMesh.GetPolygonCount()
-    # 存放uv多边型坐标索引（n,pSize）
-    uvPolygons = []
-    # 存放uv多边型边索引（n,pSize）
-    uvPolyEdges = []
-    # uvEdge集
-    uvEdges = []
-    # 依据polygon遍历uv索引集
-    for i in range(polygonCount):
-        polySize = iMesh.GetPolygonSize(i)
-
-        # 解析uv多边形
-        poly = []
-        for j in range(polySize):
-            uv = uvIndex[i*polySize + j]
-            poly.append(uv)
-        uvPolygons.append(poly)
-
-        # 解析uv边，edgeSize == polySize
-        ed = []
-        for k in range(polySize):
-            start = poly[k]
-            end = poly[(k+1) % polySize]
-            # 每个edge在创建之前都要找一下是不是其它面的共边，如果是则直接引用
-            currusEdge = None
-            edgeId = uvEdgeCount = len(uvEdges)
-            for l in range(uvEdgeCount):
-                edge = uvEdges[l]
-                # 一个edge最多被两个三角面引用，而且方向相反
-                if edge == [end, start]:
-                    currusEdge = edge
-                    edgeId = l
-                    break
-
-            ed.append(edgeId)
-            if currusEdge == None:
-                uvEdges.append([start, end])
-
-        uvPolyEdges.append(ed)
-    return len(uvPolygons)
-
-
 if __name__ == "__main__":
 
     lSdkManager, lScene = InitializeSdkObjects()
 
-    if not(LoadScene(lSdkManager, lScene, 'D:\\test.FBX')):
+    if not(LoadScene(lSdkManager, lScene, 'D:\\test1.FBX')):
         print('load scene faild!!')
 
     # The coordinate system's original Up Axis when the scene is created. 0 is X, 1 is Y, 2 is Z axis.
@@ -112,14 +71,21 @@ if __name__ == "__main__":
             # 3、解析UV集
             done, tUVs = iMesh.GetTextureUV()
             uvGroups = iMesh.BGetUVGroups()
+            maxWidth = 0
+            maxHeight = 0
             for grp in uvGroups:
                 points = iMesh.BGetContourWithUVGroup(grp)
+                points.pop()  # 去掉重合的end，便于buffer和计算面积
                 uvPoints = ID2UV(tUVs, points, width, height)
-                imgPoints = UV2IMG(height, uvPoints)
+                # 需要预处理一下uvPoints https://blog.csdn.net/Black_Friend/article/details/109779810
                 # showImage(img, [imgPoints])  # unbuffer
-                buffer = buffer_contour(imgPoints, 6)
+                buffer = buffer_contour(uvPoints, 6)
+                imgPoints = UV2IMG(height, buffer)
+                Width, Height = checkValues(buffer)
+                maxWidth = Width if Width > maxWidth else maxWidth
+                maxHeight = Height if Height > maxHeight else maxHeight
                 showImage(img, buffer)
-
+            pass
             # 5、创建空画布，填充uv多边形，填满则创建新多边形
 
     # 6、创建materail，引用贴图，设置mesh材质id

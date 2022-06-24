@@ -3,7 +3,11 @@ import cv2
 import numpy as np
 import math
 import os
-import pyclipper  # CNdoc:https://www.cnblogs.com/zhigu/p/11943118.html
+
+# polygong lib pyclipper
+# CNdoc:https://www.cnblogs.com/zhigu/p/11943118.html
+# EX:https://blog.csdn.net/weixin_43624833/article/details/112919141
+import pyclipper
 
 lSdkManager = None
 lScene = None
@@ -71,7 +75,7 @@ def BGetPolygonsWithGroup(iMesh, gIndex) -> [int]:
     return grps
 
 
-def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
+def BGetContourWithGroup(iMesh, groupId=-1) -> [int]:
     '''找出mesh(polygonGroup)的外轮廓线'''
     edges = []
     polygons = range(iMesh.GetPolygonCount())
@@ -92,7 +96,7 @@ def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
                 ### 剩下的就是轮廓线的一部份 ###
                 edges.append(ed)
         # progress report
-        printInLine('>> check group outline', groupId, ': edge', len(edges))
+        printInLine('>> check group contour', groupId, ': edge', len(edges))
 
     points = []
     # 相邻的edge一定有一个共用的顶点，前面的end与后面的start相同
@@ -120,7 +124,7 @@ def BGetOutlineWithGroup(iMesh, groupId=-1) -> [int]:
                 break
 
         # progress report
-        printInLine('>> check group outline', groupId, ': edge', len(edges))
+        printInLine('>> check group contour', groupId, ': edge', len(edges))
     return points
 
 
@@ -195,7 +199,7 @@ def getBoundingBox(polygong):
     return minx, maxx, miny, maxy
 
 
-def equidistant_zoom_contour(contour, margin):
+def buffer_contour(contour, margin):
     """
     等距离缩放多边形轮廓点
     :param contour: 一个图形的轮廓格式[[x1, x2],...],shape是(n, 2)
@@ -208,11 +212,75 @@ def equidistant_zoom_contour(contour, margin):
     return solution
 
 
+def GetUVGroupCount(iMesh):
+    layerUV = iMesh.GetElementUV()
+    # uv坐标集
+    vuPoint = layerUV.GetDirectArray()
+    # uv索引集
+    uvIndex = layerUV.GetIndexArray()
+    # 多边形数，uv与mesh的多边形一定是一一对应的
+    polygonCount = iMesh.GetPolygonCount()
+    # 存放uv多边型坐标索引（n,pSize）
+    uvPolygons = []
+    # 存放uv多边型边索引（n,pSize）
+    uvPolyEdges = []
+    # uvEdge集
+    uvEdges = []
+    # 依据polygon遍历uv索引集
+    for i in range(polygonCount):
+        polySize = iMesh.GetPolygonSize(i)
+
+        # 解析uv多边形
+        poly = []
+        for j in range(polySize):
+            uv = uvIndex[i*polySize + j]
+            poly.append(vu)
+        uvPolygons.append(poly)
+
+        # 解析uv边，edgeSize == polySize
+        for k in range(polySize):
+            start = poly[k]
+            end = poly[k+1]
+            # 每个edge在创建之前都要找一下是不是其它面的共边，如果是则直接引用
+            currusEdge = None
+            edgeId = uvEdgeCount = len(uvEdges)
+            for l in range(uvEdgeCount):
+                edge = uvEdgeCount[l]
+                # 一个edge最多被两个三角面引用，而方向相反
+                if edge == [end, start]:
+                    currusEdge = edge
+                    break
+
+            uvEdges.append([start, end])
+
+
+def test(iMesh):
+    layerUV = iMesh.GetElementUV()
+    vuPoint = layerUV.GetDirectArray()
+    uvIndex = layerUV.GetIndexArray()
+    ctrlPoints = iMesh.GetPolygonVertices()
+    polygonCount = iMesh.GetPolygonCount()
+    for i in range(polygonCount):
+        polySize = iMesh.GetPolygonSize(i)
+        for j in range(polySize):
+            ver = iMesh.GetPolygonVertex(i, j)
+            uv = uvIndex[i*polySize + j]
+            vec4 = iMesh.GetControlPointAt(ver)
+            print('poly: %s, num: %s, vertex: %s, uv: %s, vec2: %s' %
+                  (i, j, ver, uv, vec4))
+            edge = iMesh.GetMeshEdgeIndexForPolygon(i, j)
+            start, end = iMesh.GetMeshEdgeVertices(edge)
+            print('poly: %s, num: %s, edge: %s, start: %s, end: %s' %
+                  (i, j, edge, start, end))
+        print('------------------')
+    pass
+
+
 if __name__ == "__main__":
 
     lSdkManager, lScene = InitializeSdkObjects()
 
-    if not(LoadScene(lSdkManager, lScene, 'D:\\test.FBX')):
+    if not(LoadScene(lSdkManager, lScene, 'D:\\test2.FBX')):
         print('load scene faild!!')
 
     # The coordinate system's original Up Axis when the scene is created. 0 is X, 1 is Y, 2 is Z axis.
@@ -231,19 +299,21 @@ if __name__ == "__main__":
             materail = DiffuseLayer.GetParent()
             iNode = materail.GetDstObject(1)
             iMesh = iNode.GetMesh()
+            test(iMesh)
             # 3、找出每个mesh的多边形组
             groupCount = BGetPolygonGroupCount(iMesh)
+            # 4、通过UV映射找到纹理多边形
             for g in range(groupCount):
-                idPoints = BGetOutlineWithGroup(iMesh, g)
+                idPoints = BGetContourWithGroup(iMesh, g)
                 uvPoints = ID2UV(iMesh, width, height, idPoints)
                 imgPoints = UV2IMG(height, uvPoints)
                 # showImage(img, [imgPoints])# unbuffer
-                buffer = equidistant_zoom_contour(imgPoints, 6)
+                buffer = buffer_contour(imgPoints, 6)
                 showImage(img, buffer)
 
-    # 5、创建512空画布，填充uv多边形，填满则创建新多边形
+                # 5、创建空画布，填充uv多边形，填满则创建新多边形
 
-    # 6、创建materail，引用512贴图，设置mesh材质id
+    # 6、创建materail，引用贴图，设置mesh材质id
 
     # 7、清除未引用materail，导出新fbx
     cv2.waitKey(0)

@@ -32,6 +32,7 @@ def GetPolygonGroupCount(self: FbxMesh):
                         pStartIndex = self.GetPolygonVertexIndex(i)
                         pSize = self.GetPolygonSize(i)
                         for j in range(pStartIndex, pStartIndex + pSize):
+                            # TODO 当前为共点分组，应该使用共边分组，在使用此函数前要参考vu分组修改为共边逻辑
                             iVerIndex = self.GetPolygonVertices()[j]
                             # 判断这个polygon上的顶点是否在当前组的顶点集合中
                             # 如果在则是同组，如果此集合中还没有成员，则直接塞入
@@ -127,6 +128,8 @@ def GetContourWithUVGroup(self, uvPolygons):
     points = []
     if(len(edges)):
         points += self.BGetUVEdge(edges.pop(0))
+
+    # TODO 这个条件判断会忽略holes，如果需要hole，这里要重写
     while(len(edges) and points[0] != points[-1]):
         for i in edges:
             s, e = self.BGetUVEdge(i)
@@ -222,10 +225,10 @@ def GetUVGroups(self):
                 last_cIds_len = len(cIds)
                 for i in range(len(uvPolygons)):
                     if i not in checked:
-                        uvPoly = uvPolygons[i]
-                        for iVerIndex in uvPoly:
-                            if(iVerIndex in cIds or len(cIds) == 0):
-                                cIds += uvPoly
+                        edges = self.BGetUVPolygongEdges(i)
+                        for edge in edges:
+                            if(edge in cIds or len(cIds) == 0):
+                                cIds += edges
                                 checked.append(i)
                                 grp.append(i)
                                 break

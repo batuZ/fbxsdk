@@ -26,6 +26,10 @@ def checkValues(buffer):
     return maxx - minx, maxy - miny
 
 
+def reset(poly, data):
+    res = []
+
+
 def showImage(img, points):
     cv2.polylines(img, np.array(points, np.int32), True, (0, 255, 255), 2)
     cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
@@ -49,7 +53,7 @@ if __name__ == "__main__":
 
     lSdkManager, lScene = InitializeSdkObjects()
 
-    if not(LoadScene(lSdkManager, lScene, 'D:\\test1.FBX')):
+    if not(LoadScene(lSdkManager, lScene, 'D:\\test.FBX')):
         print('load scene faild!!')
 
     # The coordinate system's original Up Axis when the scene is created. 0 is X, 1 is Y, 2 is Z axis.
@@ -71,20 +75,59 @@ if __name__ == "__main__":
             # 3、解析UV集
             done, tUVs = iMesh.GetTextureUV()
             uvGroups = iMesh.BGetUVGroups()
-            maxWidth = 0
-            maxHeight = 0
+            # 4、求面积，排序
+            areaPercen = 0
+            areas = []
             for grp in uvGroups:
-                points = iMesh.BGetContourWithUVGroup(grp)
-                points.pop()  # 去掉重合的end，便于buffer和计算面积
+                vuIds = iMesh.BGetContourWithUVGroup(grp)  # [1, 2, 3, ...]
+                uvPercen = ID2UVP(tUVs, vuIds)  # [[0.1, 0.1], [0.2, 0.2], ...]
+                area = polygongArea(uvPercen)
+                areaPercen += area  # 0 ~ 1
+                areas.append(area)
+
+            # 获取当前UV面积比,用于判断是否需要处理
+            if areaPercen > 0.99:
+                continue
+
+            # 按面积对uvGroups排序
+            uvGroupIds = sorted(range(len(areas)),
+                                key=lambda k: areas[k], reverse=True)
+
+            # 5、把uv集排进画布
+            container = [[0, 0]]
+            containerSize = 1024
+            for g in uvGroupIds:
+                gid = uvGroupIds[g]
+                grp = uvGroups[gid]
+                vuIds = iMesh.BGetContourWithUVGroup(grp)
+                uvPercen = ID2UVP(tUVs, vuIds)
+                _min, _max = getBoundingBox(uvPercen)
+                _range = (np.array(_max) - np.array(_min)) * \
+                    np.array([width, height])
+                ses = []
+                for startPoint in container:
+                    res = np.array(startPoint) + _range
+                    se = res / np.array([1024, 1024])
+                    ses.append(se)
+
+                selectStart = 0
+                for s in ses:
+                    if(s[0] > 1 or s[1] > 1):
+                        continue
+
+            contours = []
+            for grp in uvGroups:
+                vuIds = iMesh.BGetContourWithUVGroup(grp)  # [1, 2, 3, ...]
+                # 获取当前UV面积比,用于判断是否需要处理
+                uvPercen = ID2UVP(tUVs, vuIds)  # [[0.1, 0.1], [0.2, 0.2], ...]
+                areaPercen += polygongArea(uvPercen)  # 0 ~ 1
+                # [[12.3, 12.3], [24.6, 24.6], ...]
                 uvPoints = ID2UV(tUVs, points, width, height)
-                # 需要预处理一下uvPoints https://blog.csdn.net/Black_Friend/article/details/109779810
-                # showImage(img, [imgPoints])  # unbuffer
-                buffer = buffer_contour(uvPoints, 6)
-                imgPoints = UV2IMG(height, buffer)
-                Width, Height = checkValues(buffer)
-                maxWidth = Width if Width > maxWidth else maxWidth
-                maxHeight = Height if Height > maxHeight else maxHeight
-                showImage(img, buffer)
+                contours.append(uvPoints)
+                # imgPoints = UV2IMG(height, uvPoints)
+                # # showImage(img, [imgPoints])  # unbuffer
+                # buffer = buffer_contour(imgPoints, 5)
+                # showImage(img, buffer)
             pass
             # 5、创建空画布，填充uv多边形，填满则创建新多边形
 

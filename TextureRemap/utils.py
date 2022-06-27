@@ -1,6 +1,6 @@
 import os
 import cv2
-
+import numpy as np
 
 output_log = True
 
@@ -36,6 +36,13 @@ def ID2UV(UVs, ids,  imgX, imgY):
     return res
 
 
+def ID2UVP(UVs, ids):
+    res = []
+    for p in ids:
+        res.append([UVs[p][0], UVs[p][1]])
+    return res
+
+
 def UV2IMG(height, points):
     '''uv坐标转图像坐标, 图像坐标向下为Y增'''
     res = []
@@ -48,18 +55,40 @@ def polygongArea(poly):
     '''多边形面积，(n,2)不闭合顶点集
     np.array([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]])
     '''
+    poly = np.array(poly)
     x = poly[:, 0]
     y = poly[:, 1]
     return 0.5*np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
 
-def getBoundingBox(polygong):
+def getBoundingBox(points):
     '''获取polygon包围盒'''
     minx = miny = float('inf')
     maxx = maxy = float('-inf')
-    for poi in polygong:
+    for poi in points:
         minx = poi[0] if poi[0] < minx else minx
         maxx = poi[0] if poi[0] > maxx else maxx
         miny = poi[1] if poi[1] < miny else miny
         maxy = poi[1] if poi[1] > maxy else maxy
-    return minx, maxx, miny, maxy
+    return (minx,  miny), (maxx, maxy)
+
+
+def cvShow(data):
+    while 1:
+        #cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+        cv2.imshow('pic', data)
+        cv2.waitKey(1)
+        tag = yield
+
+
+''' 化简多边形,以去重,去自交
+import pyclipper
+import numpy as np
+path = [[1.2, 1.5], [5.5, 1], [5, 5], [1, 5]]
+path1 = np.array(path)
+path2 = path1*100
+result = pyclipper.SimplifyPolygon(
+    path2, pyclipper.PFT_EVENODD)  # pyclipper.PFT_NONZERO
+res = np.array(result)/100.0
+print(123)
+'''

@@ -73,9 +73,22 @@ def getBoundingBox(points):
     return (minx,  miny), (maxx, maxy)
 
 
+def getRange(points):
+    (minx,  miny), (maxx, maxy) = getBoundingBox(points)
+    return maxx - minx, maxy - miny
+
+
 def cvShow(data):
     while 1:
         #cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
         cv2.imshow('pic', data)
         cv2.waitKey(100)
         tag = yield
+
+
+def find2n(num):
+    '''找到最接近num的2n次幂,返回n,四舍五入原则'''
+    n = 0
+    while num > 2**(n+0.44444444444444):
+        n += 1
+    return n

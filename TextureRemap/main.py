@@ -17,19 +17,6 @@ MAX_SIZE = 0
 TAG_SIZE = 512
 
 
-def test():
-    image = np.zeros([400, 400, 3], np.uint8)  # 初始图片黑色
-
-
-def checkValues(buffer):
-    minx, maxx, miny, maxy = getBoundingBox(buffer[0])
-    return maxx - minx, maxy - miny
-
-
-def reset(poly, data):
-    res = []
-
-
 def showImage(img, points):
     cv2.polylines(img, np.array(points, np.int32), True, (0, 255, 255), 2)
     cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)

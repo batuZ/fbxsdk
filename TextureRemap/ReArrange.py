@@ -10,6 +10,14 @@ IGNORE = 20
 _pc = pyclipper.Pyclipper()
 
 
+def find2n(num):
+    '''找到最接近num的2n次幂,返回n,四舍五入原则'''
+    n = 0
+    while num > 2**(n+0.44444444444444):
+        n += 1
+    return n
+
+
 def isAIncludeB(A, B, scale=1e4):
     '''判断多边形A是否完整包含多边形B'''
     A = np.array(A)*scale
@@ -44,9 +52,9 @@ def isIntersect(poly1, poly2):
     return False
 
 
-def cvShow(data):
+def cvShow(data, title='pic'):
     while 1:
-        cv2.imshow('pic', data)
+        cv2.imshow(title, data)
         cv2.waitKey(100)
         tag = yield
 
@@ -165,15 +173,17 @@ def rearrange(boxes, clips):
                 cv2.polylines(img, np.array(cliped)+offset, True, color2, 1)
                 _showBoxId(img, offset, boxes)
                 next(cvUpdate)
+    return clips
 
 
 if __name__ == "__main__":
     import cv2
     import time
-    # 模拟画布
-    img = np.zeros((700, 800, 3), dtype=np.uint8)
-    # 模拟容器
-    boxes = [[[0, 0], [600, 0], [600, 600], [0, 600]]]
+
+    # 绘制偏移，方便观察
+    offset = np.array([[20, 20]])
+    color1 = (152, 255, 255)
+    color2 = (0, 125, 255)
 
     # 模拟数据
     his = 0
@@ -184,25 +194,37 @@ if __name__ == "__main__":
         rands = np.random.randint(
             low=15,
             high=150,
-            size=(63, 2),
+            size=(163, 2),
             dtype=np.uint32).tolist()
         np.savetxt('testData', rands)
 
     rands.sort(key=lambda k: k[1], reverse=True)  # 按高排序
     # rands.sort(key=lambda k: k[0]*k[1], reverse=True) # 面积排序
     clips = [[[0, 0], [r[0], 0], r, [0, r[1]]] for r in rands]  # 转为轮廓线
-    # 绘制偏移，方便观察
-    cliped = []
-    offset = np.array([[20, 20]])
-    cvUpdate = cvShow(img)
-    color1 = (152, 255, 255)
-    color2 = (0, 125, 255)
 
-    stime = time.process_time()
-    rearrange(boxes, clips)
-    etime = time.process_time()
-    print('>>>', etime - stime)
+    arrrea = sum([g[0]*g[1] for g in rands])
+    area = sum([pyclipper.Area(clip) for clip in clips])
+    width = area**0.5
+    width_2n = 2**find2n(width)
 
+    tagW = 512
+    tagH = 512
+
+    fileCount = 0
+    while len(clips):
+        fileCount += 1
+        cliped = []
+        # 模拟画布
+        img = np.zeros((800, 1200, 3), dtype=np.uint8)
+        cvUpdate = cvShow(img, 'file-'+str(fileCount))
+
+        # 模拟容器
+        boxes = [[[0, 0], [tagW, 0], [tagW, tagH], [0, tagH]]]
+
+        stime = time.process_time()
+        clips = rearrange(boxes, clips)
+        etime = time.process_time()
+        print('>>>', etime - stime)
     cv2.waitKey(0)
 
 

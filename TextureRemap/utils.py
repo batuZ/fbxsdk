@@ -92,3 +92,39 @@ def find2n(num):
     while num > 2**(n+0.44444444444444):
         n += 1
     return n
+
+
+def isInclude(poly1, poly2, scale=1e6):
+    poly1 = np.array(poly1)*scale
+    poly2 = np.array(poly2)*scale
+    pc = pyclipper.Pyclipper()
+    pc.AddPath(poly1, pyclipper.PT_SUBJECT, True)
+    pc.AddPath(poly2, pyclipper.PT_CLIP, True)
+    [sumPoly] = pc.Execute(pyclipper.CT_UNION,
+                           pyclipper.PFT_POSITIVE, pyclipper.PFT_POSITIVE)
+    sumArea = pyclipper.Area(sumPoly)
+    area1 = pyclipper.Area(poly1)
+    area2 = pyclipper.Area(poly2)
+    return sumArea == area1 or sumArea == area2
+
+
+def isX(A, B):
+    A = np.array(A)[:2, :2]
+    B = np.array(B)[:2, :2]
+    return (A[:, 0].min() < B[:, 0].min() < A[:, 0].max() and B[:, 1].min() < A[:, 1].min() < B[:, 1].max()) \
+        or (B[:, 0].min() < A[:, 0].min() < B[:, 0].max() and A[:, 1].min() < B[:, 1].min() < A[:, 1].max())
+
+
+def isIntersect(poly1, poly2):
+    '''两多边形是否相交'''
+    p1Size = len(poly1)
+    p2Size = len(poly2)
+    for i in range(p1Size):
+        lineAStart = poly1[i]
+        lineAEnd = poly1[(i+1) % p1Size]
+        for j in range(p2Size):
+            lineBStart = poly2[j]
+            lineBEnd = poly2[(j+1) % p2Size]
+            if isX([lineAStart, lineAEnd], [lineBStart, lineBEnd]):
+                return True
+    return False

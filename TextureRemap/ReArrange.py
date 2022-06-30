@@ -7,8 +7,19 @@ import pyclipper
 
 # 忽略小结构
 IGNORE = 20
-img = []
-cvUpdate = None
+_pc = pyclipper.Pyclipper()
+
+
+def isAIncludeB(A, B, scale=1e4):
+    '''判断多边形A是否完整包含多边形B'''
+    A = np.array(A)*scale
+    B = np.array(B)*scale
+    _pc.Clear()
+    _pc.AddPath(A, pyclipper.PT_SUBJECT, True)
+    _pc.AddPath(B, pyclipper.PT_CLIP, True)
+    sumPolys = _pc.Execute(pyclipper.CT_UNION,
+                           pyclipper.PFT_POSITIVE, pyclipper.PFT_POSITIVE)
+    return pyclipper.Area(sumPolys[0]) == pyclipper.Area(A)
 
 
 def isX(A, B):
@@ -54,38 +65,10 @@ def _showBoxId(img, offset, polygongs):
                 1)
 
 
-def rearrange(boxes, clips):
-    # 验证数据结构
-    boxes = np.array(boxes)[:, :, :2]
-    clips = np.array(clips)[:, :4, :2]
-    pc = pyclipper.Pyclipper()
-    cliped = []
-    for clip in clips:
-        pc.Clear()
-        for box in boxes:
-            boxSize = len(box)
-            box = np.array(box)
-            # 在容器中找到可用的参考点
-            flag = False
-            for b in range(boxSize):
-                cur = box[b]  # 当前顶点，与下个顶点构成边
-                nex = box[(b+1) % boxSize]  # 下一个顶点，可循环的索引
-                sub = nex - cur  # 两顶点的差
-                tmp = clip + cur  # 使用当前顶点的临时结果
-                # 差大于0时边可用，临时结果与容器不相交
-                if sub[0] > 0 and not isIntersect(tmp, box):
-                    pc.AddPath(tmp, pyclipper.PT_CLIP, True)  # 裁剪多边型
-                    cliped.append(tmp)
-                    flag = True
-                    break
-            if flag:
-                break
-
-        pc.AddPath(box, pyclipper.PT_SUBJECT, True)  # 被裁多边型
-        # 裁剪动作 2:pyclipper.CT_DIFFERENCE, 0:pyclipper.PFT_EVENODD
-        boxes = pc.Execute(2, 0, 0)  # TODO 有可能产生多个box，需要处理一下
-
-        # 清理小边
+def _clearBox(boxes):
+    # 清理容器中的小结构
+    for box in boxes:
+        boxSize = len(box)
         for box in boxes:
             boxSize = len(box)
             for b in range(boxSize):
@@ -93,51 +76,133 @@ def rearrange(boxes, clips):
                 cur = box[b]
                 nex = box[(b+1) % boxSize]
                 nexx = box[(b+2) % boxSize]
+
+                #  |         4
+                # 3 ¯¯¯¯¯¯¯¯¯|________ 6
+                #           5         |
+                # 5 = [6.x,4.y]
                 if 0 < cur[1]-nex[1] < IGNORE:
                     nex[0], nex[1] = nexx[0], cur[1]
-                # elif 0 > cur[1]-nex[1] > -IGNORE:
-                #     cur[0], cur[1] = perv[0], nex[1]
-                # if 0 < cur[0]-nex[0] < IGNORE:
-                #     cur[0], cur[1] = nex[0], perv[1]
-                # elif 0 > cur[0]-nex[0] > -IGNORE:
-                #     nex[0] = cur[0]
-                #     nexx[0] = cur[0]
-        boxes = pyclipper.CleanPolygons(boxes)
 
-        # 渲染结果
-        if len(img):
-            img[:, :, :] = [9*16, 8*16, 5*16]
-            cv2.polylines(img, np.array(boxes)+offset,
-                          True, (152, 255, 255), 2)
-            cv2.polylines(img, np.array(cliped) +
-                          offset, True, (0, 125, 255), 1)
-            _showBoxId(img, offset, boxes)
-            next(cvUpdate)
-            pass  # 过程断点
-    pass  # 完成断点
+                #   |        5          6
+                #   |________|¯¯¯¯¯¯¯¯¯|
+                #  3         4         |
+                # 4 = [3.x,5.y]
+                elif 0 < nex[1]-cur[1] < IGNORE:
+                    cur[0], cur[1] = perv[0], nex[1]
+
+                #       3
+                # ¯¯¯¯¯|
+                #      | 5
+                #     4¯|
+                #       |_____
+                #       6
+                # 4 = [5.x,3.y]
+                if 0 < nex[0]-cur[0] < IGNORE:
+                    cur[0], cur[1] = nex[0], perv[1]
+
+                #        3
+                # ¯¯¯¯¯¯|
+                #     5 |
+                #     |¯ 4
+                #     |_____
+                #     6
+                # 5 = [4.x, 6.y]
+                elif 0 < cur[0]-nex[0] < IGNORE:
+                    nex[0], nex[1] = cur[0], nexx[1]
+
+    return pyclipper.CleanPolygons(boxes)
+
+
+def rearrange(boxes, clips):
+    # 验证数据结构
+    boxes = np.array(boxes)[:, :, :2].tolist()
+    clips = np.array(clips)[:, :4, :2].tolist()
+    pc = pyclipper.Pyclipper()
+    last_clips_len = -1
+    while last_clips_len != len(clips):
+        last_clips_len = len(clips)
+        for clip in clips:
+            for box in boxes:
+                boxSize = len(box)
+                # 在容器中找到可用的参考点
+                flag = False
+                for b in range(boxSize):
+                    cur = np.array(box[b])   # 当前顶点，与下个顶点构成边
+                    nex = box[(b+1) % boxSize]  # 下一个顶点，可循环的索引
+                    sub = nex - cur  # 两顶点的差
+                    tmp = clip + cur  # 使用当前顶点的临时结果
+                    # 找到横向边，容器完成包含临时结果
+                    if sub[0] > 0 and sub[1] == 0 and isAIncludeB(box, tmp):
+                        pc.AddPath(tmp, pyclipper.PT_CLIP, True)  # 裁剪多边型
+                        cliped.append(tmp)
+                        clips.remove(clip)
+                        flag = True
+                        break  # 过程断点
+                if flag:
+                    break
+
+            # 被裁多边型
+            pc.AddPaths(boxes, pyclipper.PT_SUBJECT, True)
+            # 裁剪动作 2:pyclipper.CT_DIFFERENCE, 0:pyclipper.PFT_EVENODD
+            boxes = pc.Execute(2, 0, 0)
+
+            # 清理过程
+            pc.Clear()
+            boxes = _clearBox(boxes)
+            for box in boxes:
+                if len(box) == 0:
+                    boxes.remove(box)
+            if len(boxes) == 0:
+                last_clips_len = len(clips)
+                break
+
+            # 渲染结果
+            if len(img):
+                img[:, :, :] = [9*16, 8*16, 5*16]
+                for b in boxes:
+                    cv2.polylines(img, [np.array(b)]+offset, True, color1, 2)
+                cv2.polylines(img, np.array(cliped)+offset, True, color2, 1)
+                _showBoxId(img, offset, boxes)
+                next(cvUpdate)
 
 
 if __name__ == "__main__":
     import cv2
-
+    import time
     # 模拟画布
     img = np.zeros((700, 800, 3), dtype=np.uint8)
     # 模拟容器
     boxes = [[[0, 0], [600, 0], [600, 600], [0, 600]]]
+
     # 模拟数据
-    rands = np.random.randint(
-        low=15,
-        high=150,
-        size=(63, 2),
-        dtype=np.uint32).tolist()
+    his = 0
+    if his:
+        # 上一次的模拟数据,用于复现问题
+        rands = np.loadtxt('testData', dtype=np.uint32).tolist()
+    else:
+        rands = np.random.randint(
+            low=15,
+            high=150,
+            size=(63, 2),
+            dtype=np.uint32).tolist()
+        np.savetxt('testData', rands)
+
     rands.sort(key=lambda k: k[1], reverse=True)  # 按高排序
     # rands.sort(key=lambda k: k[0]*k[1], reverse=True) # 面积排序
     clips = [[[0, 0], [r[0], 0], r, [0, r[1]]] for r in rands]  # 转为轮廓线
     # 绘制偏移，方便观察
+    cliped = []
     offset = np.array([[20, 20]])
     cvUpdate = cvShow(img)
+    color1 = (152, 255, 255)
+    color2 = (0, 125, 255)
 
+    stime = time.process_time()
     rearrange(boxes, clips)
+    etime = time.process_time()
+    print('>>>', etime - stime)
+
     cv2.waitKey(0)
 
 

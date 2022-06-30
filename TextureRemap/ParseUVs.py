@@ -7,7 +7,8 @@ img = []
 cvUpdate = None
 scale = 1
 height, width, channel = 0, 0, 0
-MIN_SIZE = 1024
+MIN_SIZE = 512
+TAG_SIZE = 1024
 
 
 def parseUV(texture):
@@ -42,14 +43,18 @@ def parseUV(texture):
     resy = sorted(range(len(ranges)), key=lambda i: ranges[i][1], reverse=True)
     maxy = ranges[resy[0]]
 
-    # 贴图拆分创建策略
-
+    # 贴图拆分创建策略：
+    # 1、判断uv中最大长宽值，此值为不可拆分值，如果此值大于tag_size, 则判断最接近的2n:
+    #       如果2n==tag_size, 则使用这个最大值创建新贴图，另一个边长需要通过面积确定
+    #       如果2n>tag_size, 则使用2n创建新贴图, 另一个边长需要通过面积确定
+    #       如果最大长宽是同一个uv, 则同时使用上面两个判定
+    # 2、uv中最大长宽值都未超过tag_size，则需要通过面积策略确定使用多大的贴图，使用几个：
+    #       将uv覆盖面积开平方，用此值找到最接近的2n
+    # 3、uv覆盖面积开平方，小于tag_size时，
     pass
 
 
 if __name__ == "__main__":
-    import cv2
-
     lSdkManager, lScene = InitializeSdkObjects()
 
     if not(LoadScene(lSdkManager, lScene, 'D:\\test.FBX')):

@@ -1,7 +1,7 @@
-import os
-import cv2
 import numpy as np
-
+import pyclipper
+import cv2
+import os
 output_log = True
 
 
@@ -78,10 +78,10 @@ def getRange(points):
     return maxx - minx, maxy - miny
 
 
-def cvShow(data):
+def cvShow(data, title='pic'):
     while 1:
         #cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-        cv2.imshow('pic', data)
+        cv2.imshow(title, data)
         cv2.waitKey(100)
         tag = yield
 
@@ -94,18 +94,19 @@ def find2n(num):
     return n
 
 
-def isInclude(poly1, poly2, scale=1e6):
-    poly1 = np.array(poly1)*scale
-    poly2 = np.array(poly2)*scale
-    pc = pyclipper.Pyclipper()
-    pc.AddPath(poly1, pyclipper.PT_SUBJECT, True)
-    pc.AddPath(poly2, pyclipper.PT_CLIP, True)
-    [sumPoly] = pc.Execute(pyclipper.CT_UNION,
+_pc = pyclipper.Pyclipper()
+
+
+def isAIncludeB(A, B, scale=1e4):
+    '''判断多边形A是否完整包含多边形B'''
+    A = np.array(A)*scale
+    B = np.array(B)*scale
+    _pc.Clear()
+    _pc.AddPath(A, pyclipper.PT_SUBJECT, True)
+    _pc.AddPath(B, pyclipper.PT_CLIP, True)
+    sumPolys = _pc.Execute(pyclipper.CT_UNION,
                            pyclipper.PFT_POSITIVE, pyclipper.PFT_POSITIVE)
-    sumArea = pyclipper.Area(sumPoly)
-    area1 = pyclipper.Area(poly1)
-    area2 = pyclipper.Area(poly2)
-    return sumArea == area1 or sumArea == area2
+    return pyclipper.Area(sumPolys[0]) == pyclipper.Area(A)
 
 
 def isX(A, B):
@@ -128,3 +129,16 @@ def isIntersect(poly1, poly2):
             if isX([lineAStart, lineAEnd], [lineBStart, lineBEnd]):
                 return True
     return False
+
+
+''' 化简多边形,以去重,去自交
+import pyclipper
+import numpy as np
+path = [[1.2, 1.5], [5.5, 1], [5, 5], [1, 5]]
+path1 = np.array(path)
+path2 = path1*100
+result = pyclipper.SimplifyPolygon(
+    path2, pyclipper.PFT_EVENODD)  # pyclipper.PFT_NONZERO
+res = np.array(result)/100.0
+print(123)
+'''

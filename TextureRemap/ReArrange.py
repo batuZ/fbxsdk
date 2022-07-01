@@ -1,62 +1,18 @@
+#
+#   把一个矩形集合以最紧密的方式，排布在容器中
+#   用于UV重映射中，拆分后的纹理重新排布
+#
+#
 # polygong lib pyclipper
 # CNdoc:https://www.cnblogs.com/zhigu/p/11943118.html
 # https://blog.csdn.net/weixin_43624833/article/details/112919141
 
 import numpy as np
 import pyclipper
+from utils import *
 
 # 忽略小结构
 IGNORE = 20
-_pc = pyclipper.Pyclipper()
-
-
-def find2n(num):
-    '''找到最接近num的2n次幂,返回n,四舍五入原则'''
-    n = 0
-    while num > 2**(n+0.44444444444444):
-        n += 1
-    return n
-
-
-def isAIncludeB(A, B, scale=1e4):
-    '''判断多边形A是否完整包含多边形B'''
-    A = np.array(A)*scale
-    B = np.array(B)*scale
-    _pc.Clear()
-    _pc.AddPath(A, pyclipper.PT_SUBJECT, True)
-    _pc.AddPath(B, pyclipper.PT_CLIP, True)
-    sumPolys = _pc.Execute(pyclipper.CT_UNION,
-                           pyclipper.PFT_POSITIVE, pyclipper.PFT_POSITIVE)
-    return pyclipper.Area(sumPolys[0]) == pyclipper.Area(A)
-
-
-def isX(A, B):
-    A = np.array(A)[:2, :2]
-    B = np.array(B)[:2, :2]
-    return (A[:, 0].min() < B[:, 0].min() < A[:, 0].max() and B[:, 1].min() < A[:, 1].min() < B[:, 1].max()) \
-        or (B[:, 0].min() < A[:, 0].min() < B[:, 0].max() and A[:, 1].min() < B[:, 1].min() < A[:, 1].max())
-
-
-def isIntersect(poly1, poly2):
-    '''两多边形是否相交'''
-    p1Size = len(poly1)
-    p2Size = len(poly2)
-    for i in range(p1Size):
-        lineAStart = poly1[i]
-        lineAEnd = poly1[(i+1) % p1Size]
-        for j in range(p2Size):
-            lineBStart = poly2[j]
-            lineBEnd = poly2[(j+1) % p2Size]
-            if isX([lineAStart, lineAEnd], [lineBStart, lineBEnd]):
-                return True
-    return False
-
-
-def cvShow(data, title='pic'):
-    while 1:
-        cv2.imshow(title, data)
-        cv2.waitKey(100)
-        tag = yield
 
 
 def _showBoxId(img, offset, polygongs):
@@ -167,7 +123,7 @@ def rearrange(boxes, clips):
 
             # 渲染结果
             if len(img):
-                img[:, :, :] = [9*16, 8*16, 5*16]
+                img[:, :, :] = color3
                 for b in boxes:
                     cv2.polylines(img, [np.array(b)]+offset, True, color1, 2)
                 cv2.polylines(img, np.array(cliped)+offset, True, color2, 1)
@@ -184,6 +140,11 @@ if __name__ == "__main__":
     offset = np.array([[20, 20]])
     color1 = (152, 255, 255)
     color2 = (0, 125, 255)
+    color3 = (9*16, 8*16, 5*16)
+
+    # settings
+    tagW = 512
+    tagH = 512
 
     # 模拟数据
     his = 0
@@ -193,22 +154,31 @@ if __name__ == "__main__":
     else:
         rands = np.random.randint(
             low=15,
-            high=150,
-            size=(163, 2),
+            high=510,
+            size=(423, 2),
             dtype=np.uint32).tolist()
         np.savetxt('testData', rands)
-
     rands.sort(key=lambda k: k[1], reverse=True)  # 按高排序
     # rands.sort(key=lambda k: k[0]*k[1], reverse=True) # 面积排序
     clips = [[[0, 0], [r[0], 0], r, [0, r[1]]] for r in rands]  # 转为轮廓线
 
-    arrrea = sum([g[0]*g[1] for g in rands])
-    area = sum([pyclipper.Area(clip) for clip in clips])
+    # 新贴图创建原则：
+    # 1、提供指定尺寸时
+    #   如果maxW\maxH大于tagW\tagH，使用max
+    #   如果maxW\maxH小于tagW\tagH，根据area开平方后find2n
+
+    # 2、未提供尺寸时
+    #   根据area开平方后find2n
+
+    # area 开平方
+    #
+
+    # 关于max size
+    maxW, maxH = np.array(clips)[:, 2, 0].max(), np.array(clips)[:, 2, 1].max()
+    # 关于面积
+    area = sum([g[0]*g[1] for g in rands])
     width = area**0.5
     width_2n = 2**find2n(width)
-
-    tagW = 512
-    tagH = 512
 
     fileCount = 0
     while len(clips):

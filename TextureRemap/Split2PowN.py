@@ -23,7 +23,7 @@ def split2powN(area, min=128, max=1024):
     # |__| ..  |__| ..
     # if area > 3*t*t:
     #     cur = [t*2, t*2]
-    #     last = split2powN(area-3*t*t)
+    #     last = split2powN(area-3*t*t,min,max)
     #     res = cur + last
 
     #  _____    __
@@ -31,8 +31,10 @@ def split2powN(area, min=128, max=1024):
     #  ..      |__| ..
     if area > 2*t*t:
         cur = [t*2, t]
-        last = split2powN(area-2*t*t)
-        if cur == last:
+        last = split2powN(area-2*t*t, min, max)
+        if last == [t, t]:
+            res = [t*2, t]
+        elif last == [t*2, t]:
             res = [t*2, t*2]  # 当递归值等于当前值时，合并结果
         else:
             res = cur + last
@@ -41,9 +43,11 @@ def split2powN(area, min=128, max=1024):
     # |__| ..
     elif area > t*t:
         cur = [t, t]
-        last = split2powN(area-t*t)
-        if cur == last:
+        last = split2powN(area-t*t, min, max)
+        if last == [t, t]:
             res = [t*2, t]  # 当递归值等于当前值时，合并结果
+        elif last == [t*2, t]:
+            res = [t*2, t*2]
         else:
             res = cur + last
 
@@ -57,8 +61,10 @@ def split2powN(area, min=128, max=1024):
 
 if __name__ == "__main__":
     import numpy as np
-    testArea = 2048**2 + 1233**2 + 1233**2
-    res = np.array(split2powN(testArea, 128, 2048)).reshape(-1, 2)
+    import random
+    testArea = random.randint(0, 4999**2)
+    # testArea = 2048**2 + 1233**2 + 1233**2
+    res = np.array(split2powN(testArea, 256, 1024)).reshape(-1, 2)
     print(res)
     resArea = sum([g[0]*g[1] for g in res])
     print('resArea - testArea:', resArea-testArea)

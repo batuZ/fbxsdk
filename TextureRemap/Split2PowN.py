@@ -3,68 +3,65 @@
 #   用于UV重映射时，创建需要的贴图文件
 #
 
-def findMin2n(num):
+import numpy as np
+
+
+def _findMin2n(num):
     n = 0
     while num >= 2**n:
         n += 1
     return n-1
 
 
-def split2powN(area, min=128, max=1024):
-    '''split_2powN_withArea'''
-    t = 2**findMin2n(area**0.5)  # ex: 1024
-    t = t if area >= min*min else min  # 限制最小size
+def _split(area, min, max):
+    t = 2**_findMin2n(area**0.5)
+    t = t if area >= min*min else min
     t = t if t <= max else max
-    # 4*t**2 == 2**(n+1), 不会出现area >= 4*t**2
-    # 2**n 一定小于area, 极小可能等于area
 
-    #  _____    _____
-    # |_____|  |  |__|
-    # |__| ..  |__| ..
-    # if area > 3*t*t:
-    #     cur = [t*2, t*2]
-    #     last = split2powN(area-3*t*t,min,max)
-    #     res = cur + last
-
-    #  _____    __
-    # |_____|  |  |
-    #  ..      |__| ..
-    if area > 2*t*t:
-        cur = [t*2, t]
-        last = split2powN(area-2*t*t, min, max)
-        if last == [t, t]:
-            res = [t*2, t]
-        elif last == [t*2, t]:
-            res = [t*2, t*2]  # 当递归值等于当前值时，合并结果
-        else:
-            res = cur + last
-
-    #  __
-    # |__| ..
-    elif area > t*t:
-        cur = [t, t]
-        last = split2powN(area-t*t, min, max)
-        if last == [t, t]:
-            res = [t*2, t]  # 当递归值等于当前值时，合并结果
-        elif last == [t*2, t]:
-            res = [t*2, t*2]
-        else:
-            res = cur + last
-
-    #  __
-    # |__|
-    else:  # area <= t*t
+    if area > t*t:
+        res = [t, t] + _split(area-t*t, min, max)
+    else:
         res = [t, t]
 
     return res
 
 
+def _mergeResults(arr, max):
+    # 合并尺寸相同的块，可降低损耗
+    res = []
+    stop = len(arr)
+    while len(arr):
+        tag = arr.pop(0)
+        if(tag != [max, max]):
+            for rec in arr:
+                if tag == rec:
+                    if tag[0] == tag[1]:
+                        tag[0] *= 2
+                    else:
+                        tag[1] *= 2
+                    arr.remove(rec)
+                    break
+        res.append(tag)
+    if len(res) == stop:
+        return res
+    else:
+        return _mergeResults(res, max)
+
+
+def split2powN(area, min=128, max=1024):
+    '''split_2powN_withArea'''
+    splitRes = _split(area, min, max)
+    formatRes = np.array(splitRes).reshape(-1, 2).tolist()
+    print('beforMerge:', formatRes)
+    mergeRes = _mergeResults(formatRes, max)
+    print('afterMerge:', mergeRes)
+    return mergeRes
+
+
 if __name__ == "__main__":
-    import numpy as np
     import random
-    testArea = random.randint(0, 4999**2)
-    # testArea = 2048**2 + 1233**2 + 1233**2
-    res = np.array(split2powN(testArea, 256, 1024)).reshape(-1, 2)
-    print(res)
+    testArea = random.randint(0, 2999**2)
+    # testArea = 1234**2 + 2321**2
+    res = split2powN(testArea, 128, 2048)
     resArea = sum([g[0]*g[1] for g in res])
     print('resArea - testArea:', resArea-testArea)

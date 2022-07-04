@@ -10,7 +10,7 @@
 import numpy as np
 import pyclipper
 from utils import *
-
+from Split2PowN import split2powN
 # 忽略小结构
 IGNORE = 20
 
@@ -126,7 +126,9 @@ def rearrange(boxes, clips):
                 img[:, :, :] = color3
                 for b in boxes:
                     cv2.polylines(img, [np.array(b)]+offset, True, color1, 2)
-                cv2.polylines(img, np.array(cliped)+offset, True, color2, 1)
+                if len(cliped):
+                    cv2.polylines(img, np.array(cliped) +
+                                  offset, True, color2, 1)
                 _showBoxId(img, offset, boxes)
                 next(cvUpdate)
     return clips
@@ -154,47 +156,45 @@ if __name__ == "__main__":
     else:
         rands = np.random.randint(
             low=15,
-            high=510,
-            size=(423, 2),
+            high=150,
+            size=(73, 2),
             dtype=np.uint32).tolist()
         np.savetxt('testData', rands)
     rands.sort(key=lambda k: k[1], reverse=True)  # 按高排序
     # rands.sort(key=lambda k: k[0]*k[1], reverse=True) # 面积排序
     clips = [[[0, 0], [r[0], 0], r, [0, r[1]]] for r in rands]  # 转为轮廓线
 
-    # 新贴图创建原则：
-    # 1、提供指定尺寸时
-    #   如果maxW\maxH大于tagW\tagH，使用max
-    #   如果maxW\maxH小于tagW\tagH，根据area开平方后find2n
-
-    # 2、未提供尺寸时
-    #   根据area开平方后find2n
-
-    # area 开平方
-    #
-
-    # 关于max size
-    maxW, maxH = np.array(clips)[:, 2, 0].max(), np.array(clips)[:, 2, 1].max()
-    # 关于面积
     area = sum([g[0]*g[1] for g in rands])
-    width = area**0.5
-    width_2n = 2**find2n(width)
+    maxW, maxH = np.array(clips)[:, 2, 0].max(), np.array(clips)[:, 2, 1].max()
+    maxSize = max([maxW, maxH, tagW, tagH])
+    files = split2powN(area, 128, maxSize)
 
     fileCount = 0
     while len(clips):
         fileCount += 1
         cliped = []
+
+        # 剩余面积
+        clipsArea = sum([r[2][0]*r[2][1] for r in clips])
+        # 模拟容器
+        # boxes = [[[0, 0], [tagW, 0], [tagW, tagH], [0, tagH]]]
+        maxW, maxH = [
+            np.array(clips)[:, 2, 0].max(),
+            np.array(clips)[:, 2, 1].max()
+        ]
+        rects = split2powN(clipsArea, 256, maxSize, [maxW, maxH])
+        r = rects[0]
+        boxes = [[0, 0], [r[0], 0], r, [0, r[1]]]
+
         # 模拟画布
         img = np.zeros((800, 1200, 3), dtype=np.uint8)
-        cvUpdate = cvShow(img, 'file-'+str(fileCount))
-
-        # 模拟容器
-        boxes = [[[0, 0], [tagW, 0], [tagW, tagH], [0, tagH]]]
-
+        cvUpdate = cvShow(img, 'file-{}:{}'.format(fileCount, r))
+        print(r)
         stime = time.process_time()
-        clips = rearrange(boxes, clips)
+        clips = rearrange([boxes], clips)  # 调用重排方法
         etime = time.process_time()
-        print('>>>', etime - stime)
+        # print('>>>', etime - stime)
+
     cv2.waitKey(0)
 
 

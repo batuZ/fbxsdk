@@ -1,5 +1,8 @@
 from FbxCommon import *
 from utils import *
+import time
+
+# ---------------------- Mesh --------------------------------
 
 
 def _getPointIds(iMesh, lStartIndex, pSize) -> [int]:
@@ -116,32 +119,14 @@ def GetContourWithGroup(self, groupId=-1) -> [int]:
     return points
 
 
-def GetContourWithUVGroup(self, uvPolygons):
-    edges = []
-    for poly in uvPolygons:
-        polyEdges = self.BGetUVPolygongEdges(poly)
-        for ed in polyEdges:
-            if ed in edges:
-                edges.remove(ed)
-            else:
-                edges.append(ed)
-    points = []
-    if(len(edges)):
-        points += self.BGetUVEdge(edges.pop(0))
-
-    # TODO 这个条件判断会忽略holes，如果需要hole，这里要重写
-    while(len(edges) and points[0] != points[-1]):
-        for i in edges:
-            s, e = self.BGetUVEdge(i)
-            if s == points[-1]:
-                points.append(e)
-                edges.remove(i)
-                break
-    return points
+# ---------------------- UV --------------------------------
 
 
 def _parseMeshUV(iMesh):
     '''解析MeshUV, 得到UVPolygons,UVEdges'''
+    print('>> 解析MeshUV', end=':')
+    stime = time.process_time()
+
     layerUV = iMesh.GetElementUV()
     # uv坐标集
     vuPoint = layerUV.GetDirectArray()
@@ -192,6 +177,9 @@ def _parseMeshUV(iMesh):
     iMesh.UVEdges = uvEdges
     iMesh.UVPolygongEdges = uvPolyEdges
 
+    etime = time.process_time()
+    print('{}秒'.format(etime - stime))
+
 
 def GetUVPolygons(self):
     '''获取全部UV多边形'''
@@ -213,10 +201,13 @@ def GetUVEdge(self, uvEdgeIndex):
 
 
 def GetUVGroups(self):
+    '''解析UV集'''
     if not hasattr(self, 'UVGroups'):
         self.UVGroups = []
         checked = []
         uvPolygons = self.BGetUVPolygons()
+        print('>> 解析UV集', end=':')
+        stime = time.process_time()
         while(len(checked) < len(uvPolygons)):
             cIds = []
             grp = []
@@ -233,13 +224,41 @@ def GetUVGroups(self):
                                 grp.append(i)
                                 break
             self.UVGroups.append(grp)
+        etime = time.process_time()
+        print('{}秒'.format(etime - stime))
     return self.UVGroups
 
 
+def GetContourWithUVGroup(self, uvPolygons):
+    edges = []
+    for poly in uvPolygons:
+        polyEdges = self.BGetUVPolygongEdges(poly)
+        for ed in polyEdges:
+            if ed in edges:
+                edges.remove(ed)
+            else:
+                edges.append(ed)
+    points = []
+    if(len(edges)):
+        points += self.BGetUVEdge(edges.pop(0))
+
+    # TODO 这个条件判断会忽略holes，如果需要hole，这里要重写
+    while(len(edges) and points[0] != points[-1]):
+        for i in edges:
+            s, e = self.BGetUVEdge(i)
+            if s == points[-1]:
+                points.append(e)
+                edges.remove(i)
+                break
+    done, tUVs = self.GetTextureUV()
+    return [list(tUVs[p]) for p in points]
+
+
+# ---------------------- MESH --------------------------------
 FbxMesh.BGetPolygonGroupCount = GetPolygonGroupCount
 FbxMesh.BGetPolygonsWithGroup = GetPolygonsWithGroup
 FbxMesh.BGetContourWithGroup = GetContourWithGroup
-
+# ---------------------- UV --------------------------------
 FbxMesh.BGetUVPolygons = GetUVPolygons
 FbxMesh.BGetUVPolygongEdges = GetUVPolygongEdges
 FbxMesh.BGetUVEdge = GetUVEdge

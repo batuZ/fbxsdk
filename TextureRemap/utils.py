@@ -36,13 +36,6 @@ def ID2UV(UVs, ids,  imgX, imgY):
     return res
 
 
-def ID2UVP(UVs, ids):
-    res = []
-    for p in ids:
-        res.append([UVs[p][0], UVs[p][1]])
-    return res
-
-
 def UV2IMG(height, points):
     '''uv坐标转图像坐标, 图像坐标向下为Y增'''
     res = []
@@ -61,7 +54,7 @@ def polygongArea(poly):
     return 0.5*np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
 
-def getBoundingBox(points):
+def getBoundingBox(points, buffer=0):
     '''获取polygon包围盒'''
     minx = miny = float('inf')
     maxx = maxy = float('-inf')
@@ -70,12 +63,14 @@ def getBoundingBox(points):
         maxx = poi[0] if poi[0] > maxx else maxx
         miny = poi[1] if poi[1] < miny else miny
         maxy = poi[1] if poi[1] > maxy else maxy
-    return (minx,  miny), (maxx, maxy)
+    return (minx-buffer,  miny-buffer), (maxx+buffer, maxy+buffer)
 
 
-def getRange(points):
+def getRect(points, buffer=0):
+    '''获取多边形外接矩形'''
     (minx,  miny), (maxx, maxy) = getBoundingBox(points)
-    return maxx - minx, maxy - miny
+    w, h = maxx - minx + buffer*2, maxy - miny + buffer*2
+    return [[0, 0], [w, 0], [w, h], [0, h]]
 
 
 def cvShow(data, title='pic'):
@@ -129,6 +124,19 @@ def isIntersect(poly1, poly2):
             if isX([lineAStart, lineAEnd], [lineBStart, lineBEnd]):
                 return True
     return False
+
+
+def buffer_contour(contour, margin):
+    """
+    等距离缩放多边形轮廓点
+    :param contour: 一个图形的轮廓格式[[x1, x2],...],shape是(n, 2)
+    :param margin: 轮廓外扩的像素距离,margin正数是外扩,负数是缩小
+    :return: 外扩后的轮廓点
+    """
+    pco = pyclipper.PyclipperOffset()
+    pco.AddPath(contour, pyclipper.JT_MITER, pyclipper.ET_CLOSEDPOLYGON)
+    solution = pco.Execute(margin)
+    return solution
 
 
 ''' 化简多边形,以去重,去自交

@@ -13,6 +13,7 @@ from utils import *
 from Split2PowN import split2powN
 # 忽略小结构
 IGNORE = 20
+img = []
 
 
 def _showBoxId(img, offset, polygongs):
@@ -80,8 +81,8 @@ def _clearBox(boxes):
 
 def rearrange(boxes, clips):
     # 验证数据结构
-    boxes = np.array(boxes)[:, :, :2].tolist()
-    clips = np.array(clips)[:, :4, :2].tolist()
+    boxes = np.array(boxes, np.int64)[:, :, :2].tolist()
+    clips = np.array(clips, np.int64)[:, :4, :2].tolist()
     pc = pyclipper.Pyclipper()
     last_clips_len = -1
     while last_clips_len != len(clips):
@@ -99,7 +100,8 @@ def rearrange(boxes, clips):
                     # 找到横向边，容器完成包含临时结果
                     if sub[0] > 0 and sub[1] == 0 and isAIncludeB(box, tmp):
                         pc.AddPath(tmp, pyclipper.PT_CLIP, True)  # 裁剪多边型
-                        cliped.append(tmp)
+                        if len(img):
+                            cliped.append(tmp)
                         clips.remove(clip)
                         flag = True
                         break  # 过程断点
@@ -167,7 +169,7 @@ if __name__ == "__main__":
     area = sum([g[0]*g[1] for g in rands])
     maxW, maxH = np.array(clips)[:, 2, 0].max(), np.array(clips)[:, 2, 1].max()
     maxSize = max([maxW, maxH, tagW, tagH])
-    files = split2powN(area, 128, maxSize)
+    # files = split2powN(area, 128, maxSize)
 
     fileCount = 0
     while len(clips):

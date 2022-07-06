@@ -11,16 +11,26 @@ import math
 # EX:https://blog.csdn.net/weixin_43624833/article/details/112919141
 import pyclipper
 
+from ParseUVs import parseUV
+from ReArrange import rearrange
+from Split2PowN import split2powN
+
+
 lSdkManager = None
 lScene = None
 MAX_SIZE = 0
-TAG_SIZE = 512
+TAG_SIZE = 1024
 
 
 def showImage(img, points):
     cv2.polylines(img, np.array(points, np.int32), True, (0, 255, 255), 2)
     cv2.namedWindow('pic', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
     cv2.imshow('pic', img)
+
+ # imgPoints = UV2IMG(height, uvPoints)
+# # showImage(img, [imgPoints])  # unbuffer
+# buffer = buffer_contour(imgPoints, 5)
+# showImage(img, buffer)
 
 
 def buffer_contour(contour, margin):
@@ -36,7 +46,27 @@ def buffer_contour(contour, margin):
     return solution
 
 
+def d_showOri(img, title):
+    scale = _debug / height
+    oriImg = cv2.resize(img, None, fx=scale, fy=scale)
+    cvUpdate = cvShow(oriImg, '{}-{}x{}'.format(title, width, height))
+    next(cvUpdate)
+    return oriImg, cvUpdate
+
+
+def d_updateOri(oriImg, oriUpdate, ranges):
+    scale = _debug / height
+
+    # h, w, _ = img.shape
+    auv = [0, _debug] - np.array(ranges)*[-scale, scale]
+    auv = np.array(auv, dtype=np.int32)
+    cv2.polylines(oriImg, auv, True, (152, 255, 255), 1)
+    next(oriUpdate)
+
+
 if __name__ == "__main__":
+    import time
+    _debug = 0  # 700.0
 
     lSdkManager, lScene = InitializeSdkObjects()
 
@@ -47,77 +77,63 @@ if __name__ == "__main__":
     # upAxis = lScene.GetGlobalSettings().GetOriginalUpAxis()  # Z-UP
     # print('upAxis:', upAxis)
 
-    # 1、找到所有超尺寸贴图
+    # 1、找到需要处理的贴图
     for i in range(lScene.GetTextureCount()):
         tex = lScene.GetTexture(i)
         fileName = tex.GetFileName()
+
         img = cv2Reader(fileName)
         height, width, channel = img.shape
+
+        if _debug:
+            oriImg, oriUpdate = d_showOri(img, os.path.basename(fileName))
+
         if width > MAX_SIZE or height > MAX_SIZE:
-            # 2、处理使用大贴图的模型
+            print('>> 开始处理{}'.format(os.path.basename(fileName)))
+            # 2、找到对应的mesh
             DiffuseLayer = tex.GetDstProperty()
             materail = DiffuseLayer.GetParent()
             iNode = materail.GetDstObject(1)
             iMesh = iNode.GetMesh()
             # 3、解析UV集
-            done, tUVs = iMesh.GetTextureUV()
             uvGroups = iMesh.BGetUVGroups()
-            # 4、求面积，排序
-            areaPercen = 0
-            areas = []
-            for grp in uvGroups:
-                vuIds = iMesh.BGetContourWithUVGroup(grp)  # [1, 2, 3, ...]
-                uvPercen = ID2UVP(tUVs, vuIds)  # [[0.1, 0.1], [0.2, 0.2], ...]
-                area = polygongArea(uvPercen)
-                areaPercen += area  # 0 ~ 1
-                areas.append(area)
+            rects = []
+            bboxes = []
+            for g in uvGroups:
+                uvPercenContour = iMesh.BGetContourWithUVGroup(g)
+                uvContour = np.array(uvPercenContour)*[width, height]
+                # TODO buffer 是根据数据实际情况确定
+                # polygon的buffer一定小于外接矩形，buffer越大误差越大
+                # 为了减少计算量直接用rect+buffer，优化后可以直接用polygongBuffer
+                rect = getRect(uvContour, buffer=5)
+                rects.append(rect)
+                if _debug:
+                    b = getBoundingBox(uvContour, buffer=5)
+                    bbox = [b[0], [b[1][0], b[0][1]], b[1], [b[0][0], b[1][1]]]
+                    bboxes.append(bbox)
+            if _debug:
+                d_updateOri(oriImg, oriUpdate, bboxes)
 
-            # 获取当前UV面积比,用于判断是否需要处理
-            if areaPercen > 0.99:
-                continue
-
-            # 按面积对uvGroups排序
-            uvGroupIds = sorted(range(len(areas)),
-                                key=lambda k: areas[k], reverse=True)
-
-            # 5、把uv集排进画布
-            container = [[0, 0]]
-            containerSize = 1024
-            for g in uvGroupIds:
-                gid = uvGroupIds[g]
-                grp = uvGroups[gid]
-                vuIds = iMesh.BGetContourWithUVGroup(grp)
-                uvPercen = ID2UVP(tUVs, vuIds)
-                _min, _max = getBoundingBox(uvPercen)
-                _range = (np.array(_max) - np.array(_min)) * \
-                    np.array([width, height])
-                ses = []
-                for startPoint in container:
-                    res = np.array(startPoint) + _range
-                    se = res / np.array([1024, 1024])
-                    ses.append(se)
-
-                selectStart = 0
-                for s in ses:
-                    if(s[0] > 1 or s[1] > 1):
-                        continue
-
-            contours = []
-            for grp in uvGroups:
-                vuIds = iMesh.BGetContourWithUVGroup(grp)  # [1, 2, 3, ...]
-                # 获取当前UV面积比,用于判断是否需要处理
-                uvPercen = ID2UVP(tUVs, vuIds)  # [[0.1, 0.1], [0.2, 0.2], ...]
-                areaPercen += polygongArea(uvPercen)  # 0 ~ 1
-                # [[12.3, 12.3], [24.6, 24.6], ...]
-                uvPoints = ID2UV(tUVs, points, width, height)
-                contours.append(uvPoints)
-                # imgPoints = UV2IMG(height, uvPoints)
-                # # showImage(img, [imgPoints])  # unbuffer
-                # buffer = buffer_contour(imgPoints, 5)
-                # showImage(img, buffer)
-            pass
-            # 5、创建空画布，填充uv多边形，填满则创建新多边形
-
+            # 4、拆分贴图
+            print('>> 拆分贴图:')
+            stime = time.process_time()
+            fileCount = 0
+            while len(rects):
+                fileCount += 1
+                cliped = []
+                rectsArea = sum([r[2][0]*r[2][1] for r in rects])
+                maxW, maxH = [
+                    np.array(rects)[:, 2, 0].max(),
+                    np.array(rects)[:, 2, 1].max()
+                ]
+                maxSize = max([maxW, maxH, TAG_SIZE])
+                rects = split2powN(rectsArea, 256, maxSize, [maxW, maxH])
+                r = rects[0]
+                boxes = [[0, 0], [r[0], 0], r, [0, r[1]]]
+                rects = rearrange([boxes], [rects])
+                print('file-{}:{}'.format(fileCount, r))
+            etime = time.process_time()
+            print('{}秒'.format(etime - stime))
     # 6、创建materail，引用贴图，设置mesh材质id
 
     # 7、清除未引用materail，导出新fbx
